@@ -254,8 +254,15 @@ def do_commit(filedatadict):
 #******************************************************************************#
 # APPLYING ON CHECKOUT/MERGE
 def apply_merge(filedatadict, *args):
-    data = git_name_status("ORIG_HEAD", "HEAD" )
-    #print "(status, filename): ", data
+    try:
+        if args and args[0] == "amend":
+            data = git_name_status("HEAD^", "HEAD" )
+        else:
+            data = git_name_status("ORIG_HEAD", "HEAD" )
+    except subprocess.CalledProcessError as e:
+        print "Couldn't get name status", e
+        print "Args:", args
+        return
 
     for (status, filename) in data:
         if status[0] in changed_statuses:
