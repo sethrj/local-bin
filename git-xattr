@@ -36,11 +36,14 @@ def call_git(*args):
 
 def get_xattr_path():
     git_base_path = os.environ.get('GIT_DIR', None)
-    if git_base_path:
-        git_base_path = os.path.abspath(os.path.join(git_base_path, '..'))
-    else:
-        git_base_path = call_git("rev-parse", "--show-toplevel").strip()
-    return os.path.join(git_base_path, '.gitxattr_json')
+    if not git_base_path:
+        git_base_path = call_git("rev-parse", "--git-dir").strip()
+
+    # Old gitxattr
+    #git_base_path = os.path.abspath(os.path.join(git_base_path, '..'))
+    #path = os.path.join(git_base_path, '.gitxattr_json')
+
+    return os.path.join(git_base_path, "xattr.json")
 
 xattr_path = get_xattr_path()
 
@@ -67,16 +70,22 @@ def git_name_status(*args):
 
     return data
 
-def extend_directory_names(filenames):
-    "Add directories in pwd to the list of filenames"
+def get_directory_names():
+    """Add directories in pwd to the list of filenames"""
+    dirnames = []
     for root, dirs, files in os.walk('.'):
         # Don't walk through invisibles
         dirs[:] = [dn for dn in dirs if dn[0] != '.']
         # Add dirs to the list of attributes
-        filenames.extend(os.path.join(root, dn) for dn in dirs)
+        dirnames.extend(os.path.join(root, dn) for dn in dirs)
+
+    return dirnames
 
 #******************************************************************************#
 # LOADING AND SETTING INDIVIDUAL FILE XATTRS
+_yellow_color = xattr_key_decode("AAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
+_green_color  = xattr_key_decode("AAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
+
 def load_xattr_into_dict(path, filedatadict):
     dat = {}
     if not os.path.exists(path):
@@ -84,6 +93,16 @@ def load_xattr_into_dict(path, filedatadict):
                 path)
         return
     xa = xattr.xattr(path)
+
+    # Set default colors
+    #if path.endswith("CMakeLists.txt") or path.endswith(".cmake"):
+    if path.endswith("CMakeLists.txt"):
+        # Set CMake finder color
+        xa['com.apple.FinderInfo'] = _yellow_color
+    #elif path.endswith(".i"):
+    #    # Set SWIG finder color
+    #    xa['com.apple.FinderInfo'] = _green_color
+
     if xa:
         # store new xattributes
         dat['xattrs'] = xattr_to_dict(xa)
@@ -95,7 +114,9 @@ def load_xattr_into_dict(path, filedatadict):
         dat['creation'] = os.stat(path)[-1]
     else:
         # load creation date: check git repo history
-        gitoutput = call_git("log", "--format=%at", "--follow", "--", path,)
+        #gitoutput = call_git("log", "--format=%at", "--follow", "--", path,)
+        # Use last modification date instead of creation date for speed
+        gitoutput = call_git("log", "--format=%at", "-1", "--", path,)
         if (gitoutput):
             dat['creation'] = int(gitoutput.split('\n')[-2])
         else:
@@ -113,10 +134,11 @@ def load_xattr_into_dict(path, filedatadict):
 
 def apply_file_attr(path, filedatadict):
     if not os.path.exists(path):
-        del filedatadict[path]
+        #print "Deleting now-defunct path '%s'" % path
+        #del filedatadict[path]
         return
     if not path in filedatadict:
-        print "path '%s' was unexpectedly not in .gitxattr" % path
+        #print "path '%s' was unexpectedly not in .gitxattr" % path
         load_xattr_into_dict(path, filedatadict)
         return
     data = filedatadict[path]
@@ -151,9 +173,14 @@ def build_initial_attr():
     print "Loading and replacing all attributes."
     filedatadict = {}
     gitoutput = call_git("ls-files", "--cached","-z",)
+
+    # Get all file names
     filenames = gitoutput.split('\x00')[:-1]
-    extend_directory_names(filenames)
-    for path in filenames:
+    filenames.extend(get_directory_names())
+    status_stride = max(50, len(filenames) / 20)
+    for (i, path) in enumerate(filenames):
+        if not i % status_stride:
+            print "Completed %d/%d [current: '%s']" % (i, len(filenames), path)
         load_xattr_into_dict(path, filedatadict)
     return filedatadict
 
@@ -162,7 +189,8 @@ def force_update_attr(filedatadict):
     print "Forcing update."
     gitoutput = call_git("ls-files", "--cached","-z",)
     filenames = gitoutput.split('\x00')[:-1]
-    extend_directory_names(filenames)
+    filenames.extend(get_directory_names())
+
     for path in set(filedatadict) - set(filenames):
         print "deleting key", path
         del filedatadict[path]
@@ -225,7 +253,7 @@ def do_commit(filedatadict):
 
 #******************************************************************************#
 # APPLYING ON CHECKOUT/MERGE
-def apply_merge(filedatadict):
+def apply_merge(filedatadict, *args):
     data = git_name_status("ORIG_HEAD", "HEAD" )
     #print "(status, filename): ", data
 
@@ -252,8 +280,8 @@ def print_files(filedatadict):
 # POSSIBLE HOOK EVENTS:
 #  - init: calculate all info about repository, write it to .gitxattr
 #  - pre-commit: add attributes from newly added files
-#  - post-checkout: revert attributes to
-#  - post-merge: revert attributes to
+#  - post-checkout: revert attributes
+#  - post-merge: revert attributes
 
 def main(argv=None):
     if argv is None:
@@ -266,6 +294,7 @@ def main(argv=None):
             'resolve'      : resolve_merge,
             'pre-commit'   : do_commit,
             'post-merge'   : apply_merge,
+            'post-rewrite' : apply_merge,
             'post-checkout': apply_checkout,
             }
 
@@ -298,12 +327,12 @@ def main(argv=None):
 
     ### WRITE XATTR DATA
     if task in ("pre-commit", "update", "reset", "resolve"):
-        print "Rewriting '%s' and adding to commit" % xattr_path
+        #print "Rewriting '%s' and adding to commit" % xattr_path
         # write new data
         with open(xattr_path, 'wb') as outfile:
+            #json.dump(xattr_data_dict, outfile)
             json.dump(xattr_data_dict, outfile, indent=0, sort_keys=True)
-        # now git add the newly written file
-        call_git("add", xattr_path)
+        #call_git("add", xattr_path)
 
 ################################################################################
 if __name__ == '__main__':
