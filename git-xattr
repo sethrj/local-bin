@@ -2,12 +2,12 @@
 ## \author Seth R. Johnson
 # Note: to make this work on a Mac system, the system-installed Python
 # (/usr/bin, not /opt/bin) should be used. That's why I don't use `env python`.
-from __future__ import with_statement
-import sys
-import os.path
-import time
-import subprocess
+
 import binascii
+import os
+import subprocess
+import sys
+import time
 
 try:
     import json
@@ -24,16 +24,32 @@ except ImportError, e:
     print "Could not import xattr; may be on non-mac system"
     sys.exit(0)
 
-nowtime = int( time.time() )
-data_file_name = ".gitxattr_json"
+nowtime = int(time.time())
 gitcmd = "git"
 
-#******************************************************************************#
-def xattr_to_dict( xa ):
-    return dict( (k, binascii.b2a_base64(v)) for (k,v) in xa.iteritems() )
+def call_git(*args):
+    try:
+        output = subprocess.check_output((gitcmd,) + args)
+    except subprocess.CalledProcessError as e:
+        raise
+    return output
 
-def xattr_key_decode( txt ):
-    return binascii.a2b_base64( txt )
+def get_xattr_path():
+    git_base_path = os.environ.get('GIT_DIR', None)
+    if git_base_path:
+        git_base_path = os.path.abspath(os.path.join(git_base_path, '..'))
+    else:
+        git_base_path = call_git("rev-parse", "--show-toplevel").strip()
+    return os.path.join(git_base_path, '.gitxattr_json')
+
+xattr_path = get_xattr_path()
+
+#******************************************************************************#
+def xattr_to_dict(xa):
+    return dict((k, binascii.b2a_base64(v)) for (k, v) in xa.iteritems())
+
+def xattr_key_decode(txt):
+    return binascii.a2b_base64(txt)
 
 #******************************************************************************#
 
@@ -42,56 +58,53 @@ def xattr_key_decode( txt ):
 # are Unmerged (U), are Unknown (X), or have had their pairing Broken (B)
 changed_statuses = ('M','A','C','T','X')
 
-def git_name_status( *args ):
-    gitoutput = subprocess.Popen(
-            (gitcmd, "diff", "--name-status","-z") + args,
-            stdout=subprocess.PIPE).communicate()[0]
+def git_name_status(*args):
+    gitoutput = call_git("diff", "--name-status", "-z", *args)
     # Split the zero-delimited result into a flattened list
     data = gitoutput.split('\x00')
     # Turn the list into pairs (also gets rid of last empty value)
-    data = zip( data[0::2],data[1::2] )
+    data = zip(data[0::2], data[1::2])
 
     return data
 
-def extend_directory_names( filenames ):
+def extend_directory_names(filenames):
     "Add directories in pwd to the list of filenames"
     for root, dirs, files in os.walk('.'):
         #don't walk through invisibles
         dirs[:] = [dn for dn in dirs if dn[0] != '.']
         #add dirs to the list of attributes
-        filenames.extend( os.path.join(root, dn) for dn in dirs )
+        filenames.extend(os.path.join(root, dn) for dn in dirs)
+
 #******************************************************************************#
 # LOADING AND SETTING INDIVIDUAL FILE XATTRS
 def load_xattr_into_dict(fname, filedatadict):
     dat = {}
     if not os.path.exists(fname):
-        print "Can't load xattr for file <%s> because it doesn't exist." % (
-                fname )
+        print "Can't load xattr for file '%s' because it doesn't exist." % (
+                fname)
         return
     xa = xattr.xattr(fname)
     if xa:
         # store new xattributes
-        dat['xattrs'] = xattr_to_dict( xa )
+        dat['xattrs'] = xattr_to_dict(xa)
 
     if fname in filedatadict:
         dat['creation'] = filedatadict[ fname ]['creation']
-    elif os.path.isdir( fname ):
+    elif os.path.isdir(fname):
         # get creation date from fname itself (ctime/metadata change)
         dat['creation'] = os.stat(fname)[-1]
     else:
         # load creation date: check git repo history
-        gitoutput = subprocess.Popen(
-                [gitcmd, "log", "--format=%at", "--follow", "--", fname],
-                stdout=subprocess.PIPE).communicate()[0]
-        if ( gitoutput ):
+        gitoutput = call_git("log", "--format=%at", "--follow", "--", fname,)
+        if (gitoutput):
             dat['creation'] = int(gitoutput.split('\n')[-2])
         else:
             try:
-                print "NOTICE: Had to stat file <%s>" % fname
+                print "NOTICE: Had to stat file '%s'" % fname
                 # get creation date from fname itself (ctime/metadata change)
                 dat['creation'] = os.stat(fname)[-1]
             except OSError, e:
-                print "NOTICE: Error trying to stat file <%s>" % fname
+                print "NOTICE: Error trying to stat file '%s'" % fname
                 dat['creation'] = nowtime
 
     # set the dictionary attribute
@@ -100,21 +113,22 @@ def load_xattr_into_dict(fname, filedatadict):
 
 def apply_file_attr(fname, filedatadict):
     if not os.path.exists(fname):
-        print "Can't set xattr for fname <" + fname + "> because it doesn't exist."
+        print "Can't set xattr for fname '%s' because it doesn't exist." % (
+                fname)
         return
     if not fname in filedatadict:
-        print "fname <" + fname + "> was unexpectedly not in .gitxattr"
+        print "fname '%s' was unexpectedly not in .gitxattr" % fname
         load_xattr_into_dict(fname, filedatadict)
         return
     data = filedatadict[ fname ]
     # set date: (access, modified) ; or on mac (created, modified)
     try:
-        os.utime(fname, (data['creation'], data['creation']) )
+        os.utime(fname, (data['creation'], data['creation']))
     except OSError, e:
-        print "Couldn't apply attributes to file", fname
+        print "Couldn't apply attributes to file '%s'" % fname
         return
 
-    os.utime(fname, (nowtime, nowtime) )
+    os.utime(fname, (nowtime, nowtime))
 
     # set xattrs
     try:
@@ -128,28 +142,28 @@ def apply_file_attr(fname, filedatadict):
         del xa[k]
     # set all existing keys
     for k in storedxa:
-        xa[k] = xattr_key_decode( storedxa[k] )
+        xa[k] = xattr_key_decode(storedxa[k] )
 
 
 #******************************************************************************#
 # MANUAL RESET OF METADATA
-def store_initial_attr(filedatadict):
-    "Loads (and overwrites) all existing attributes"
+def build_initial_attr():
+    """Loads (and overwrites) all existing attributes"""
     print "Loading and replacing all attributes."
-    gitoutput = subprocess.Popen( [gitcmd, "ls-files", "--cached","-z"],
-        stdout=subprocess.PIPE).communicate()[0]
+    filedatadict = {}
+    gitoutput = call_git("ls-files", "--cached","-z",)
     filenames = gitoutput.split('\x00')[:-1]
-    extend_directory_names( filenames )
+    extend_directory_names(filenames)
     for fname in filenames:
         load_xattr_into_dict(fname, filedatadict)
+    return filedatadict
 
 def force_update_attr(filedatadict):
     "Removes nonexistent attributes and updates new ones"
     print "Forcing update."
-    gitoutput = subprocess.Popen( [gitcmd, "ls-files", "--cached","-z"],
-        stdout=subprocess.PIPE).communicate()[0]
+    gitoutput = call_git("ls-files", "--cached","-z",)
     filenames = gitoutput.split('\x00')[:-1]
-    extend_directory_names( filenames )
+    extend_directory_names(filenames)
     for fname in set(filedatadict) - set(filenames):
         print "deleting key", fname
         del filedatadict[fname]
@@ -159,78 +173,81 @@ def force_update_attr(filedatadict):
 
 def force_apply_all(filedatadict):
     for filename in filedatadict:
-        apply_file_attr( filename, filedatadict )
+        apply_file_attr(filename, filedatadict)
 
 #******************************************************************************#
 # MERGE OTHER .gitxattr
 def resolve_merge(head_datadict, xattr_filename):
-    gitoutput = subprocess.Popen( (gitcmd, "show", ":3:" + xattr_filename),
-            stdout=subprocess.PIPE)
+    print "Trying to resolve merge"
+    gitoutput = call_git("show", ":3:" + xattr_filename,)
     # load other branch's xattr database
-    remote_datadict = json.load( gitoutput.stdout )
+    remote_datadict = json.load(gitoutput.stdout)
 
     # see what new files we're adding from the other branch
-    added_keys = set(remote_datadict) - set( head_datadict.keys())
+    added_keys = set(remote_datadict) - set(head_datadict.keys())
     # apply attributes to those files
     for filename in added_keys:
-        apply_file_attr( filename, remote_datadict )
+        apply_file_attr(filename, remote_datadict)
 
     # update our dictionary
-    head_datadict.update( remote_datadict )
+    head_datadict.update(remote_datadict)
 
 #******************************************************************************#
 # STORING DATA FOR ADDED FILES ON COMMIT
 def store_committed_attr(filedatadict):
-    data = git_name_status( "--cached" )
+    data = git_name_status("--cached" )
     #print "(status, filename):", data
     # Apply to each result
     for (status, filename) in data:
         if status[0] in changed_statuses:
             load_xattr_into_dict(filename, filedatadict)
         elif status[0] == 'R':
-            print "NOTICE: renamed a file <%s>" % filename
+            #print "NOTICE: renamed a file '%s'" % filename
             # set old key to new?
             pass
         elif status[0] == 'D':
             try:
                 del filedatadict[filename]
             except KeyError:
-                print "Warning: it seems like file <%s>" \
-                        "was missing from the database. But that's ok because" \
-                        "we're deleting it anyway." % filename
+                print ("Warning: it seems like file '%s'"
+                        "was missing from the database. But that's ok because"
+                        "we're deleting it anyway." % filename)
 
     return
 
 def do_commit(filedatadict):
-    gitoutput = subprocess.Popen(
-            (gitcmd, "log", "-n", "1", "--format=%s%n%b"),
-            stdout=subprocess.PIPE).communicate()[0]
+    gitoutput = call_git("log", "-n", "1", "--format=%s%n%b")
     if "Merge branch" == gitoutput[:12] and "Conflicts:" in gitoutput:
-        print "Detecting merge of conflicted branch; doing apply_merge" \
-                "rather than store_committed_attr"
-        apply_merge( filedatadict )
+        print ("Detecting merge of conflicted branch; doing apply_merge "
+                "rather than store_committed_attr")
+        apply_merge(filedatadict)
     else:
-        store_committed_attr( filedatadict )
+        store_committed_attr(filedatadict)
 
 #******************************************************************************#
 # APPLYING ON CHECKOUT/MERGE
 def apply_merge(filedatadict):
-    data = git_name_status( "ORIG_HEAD", "HEAD" )
+    data = git_name_status("ORIG_HEAD", "HEAD" )
     #print "(status, filename): ", data
 
     for (status, filename) in data:
         if status[0] in changed_statuses:
-            apply_file_attr( filename, filedatadict )
+            apply_file_attr(filename, filedatadict)
 
-def apply_checkout(filedatadict, args):
+def apply_checkout(filedatadict, *args):
     (oldref, newref, isBranchCheckout) = args
     #print "Apply_checkout args:", args
-    data = git_name_status( oldref, newref )
+    data = git_name_status(oldref, newref)
     #print "(status, filename)", data
 
     for (status, filename) in data:
         if status[0] in changed_statuses:
-            apply_file_attr( filename, filedatadict )
+            apply_file_attr(filename, filedatadict)
+
+#******************************************************************************#
+def print_files(filedatadict):
+    print "Files in '%s':" % xattr_path
+    print "\n".join(sorted(filedatadict))
 
 #******************************************************************************#
 # POSSIBLE HOOK EVENTS:
@@ -239,59 +256,55 @@ def apply_checkout(filedatadict, args):
 #  - post-checkout: revert attributes to
 #  - post-merge: revert attributes to
 
-def main():
-    if len(sys.argv) < 2:
-        print "Usage: ", sys.argv[0], \
-                "[ reset | update | apply | pre-commit | " \
-                "post-checkout [args] | " \
-                "post-merge | resolve ] "
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    tasks = {
+            'reset'        : lambda data: None,
+            'update'       : force_update_attr,
+            'print'        : print_files,
+            'resolve'      : resolve_merge,
+            'pre-commit'   : do_commit,
+            'post-merge'   : apply_merge,
+            'post-checkout': apply_checkout,
+            }
+
+    if len(argv) < 1:
+        print "Usage: %s [%s] [args]" % (sys.argv[0],
+                " | ".join(sorted(tasks)))
+        sys.exit(2)
+
+    task = argv[0]
+    if task not in tasks:
+        print "Invalid task '%s': choose one of %s" % (task,
+                ", ".join(sorted(tasks)))
         sys.exit(1)
 
-    task  = sys.argv[1]
-
-    xattr_data_dict = {}
-
-    if not os.path.isfile(data_file_name) or (task == "reset"):
-        print "xattr file <" + data_file_name + "> not found; initializing"
-        store_initial_attr( xattr_data_dict )
+    ### LOAD XATTR DATA
+    if not os.path.isfile(xattr_path):
+        print "xattr file '%s' not found; initializing" % xattr_path
+        xattr_data_dict = build_initial_attr()
+    elif task == "reset":
+        xattr_data_dict = build_initial_attr()
     else:
         # try opening the file
-        with open(data_file_name) as data_file:
+        with open(xattr_path) as data_file:
             # load old data into dict; if nonexistent, set dict to empty
             xattr_data_dict = json.load(data_file)
 
-    if task == "reset":
-        pass #we already loaded it
-    elif task == "update":
-        force_update_attr( xattr_data_dict )
-    elif task == "apply":
-        force_apply_all( xattr_data_dict )
-    elif task == "print":
-        print "Files in", data_file_name, ":"
-        print "\n".join( sorted( xattr_data_dict.keys() ))
-    elif task == "resolve":
-        print "Trying to resolve merge"
-        resolve_merge( xattr_data_dict, data_file_name )
-    elif task == "pre-commit":
-        do_commit( xattr_data_dict )
-    elif task == "post-merge":
-        apply_merge( xattr_data_dict )
-    elif task == "post-checkout":
-#        print "\n".join( sorted(
-#            k for k in xattr_data_dict.keys() if ".txt" in k ))
-        args = sys.argv[2:]
-        apply_checkout( xattr_data_dict, args )
-    else:
-        print "Error: unrecognized task ", task
-        sys.exit(1)
+    ### CALL FUNCTION
+    fn = tasks[task]
+    fn(xattr_data_dict, *argv[1:])
 
+    ### WRITE XATTR DATA
     if task in ("pre-commit", "update", "reset", "resolve"):
-        print "Rewriting ", data_file_name, "and adding to commit"
+        print "Rewriting '%s' and adding to commit" % xattr_path
         # write new data
-        with open(data_file_name, 'wb') as outfile:
+        with open(xattr_path, 'wb') as outfile:
             json.dump(xattr_data_dict, outfile, indent=0, sort_keys=True)
         # now git add the newly written file
-        subprocess.call( (gitcmd,"add",data_file_name) )
+        call_git("add", xattr_path)
 
 ################################################################################
 if __name__ == '__main__':
