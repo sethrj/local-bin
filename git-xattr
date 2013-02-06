@@ -70,72 +70,71 @@ def git_name_status(*args):
 def extend_directory_names(filenames):
     "Add directories in pwd to the list of filenames"
     for root, dirs, files in os.walk('.'):
-        #don't walk through invisibles
+        # Don't walk through invisibles
         dirs[:] = [dn for dn in dirs if dn[0] != '.']
-        #add dirs to the list of attributes
+        # Add dirs to the list of attributes
         filenames.extend(os.path.join(root, dn) for dn in dirs)
 
 #******************************************************************************#
 # LOADING AND SETTING INDIVIDUAL FILE XATTRS
-def load_xattr_into_dict(fname, filedatadict):
+def load_xattr_into_dict(path, filedatadict):
     dat = {}
-    if not os.path.exists(fname):
+    if not os.path.exists(path):
         print "Can't load xattr for file '%s' because it doesn't exist." % (
-                fname)
+                path)
         return
-    xa = xattr.xattr(fname)
+    xa = xattr.xattr(path)
     if xa:
         # store new xattributes
         dat['xattrs'] = xattr_to_dict(xa)
 
-    if fname in filedatadict:
-        dat['creation'] = filedatadict[ fname ]['creation']
-    elif os.path.isdir(fname):
-        # get creation date from fname itself (ctime/metadata change)
-        dat['creation'] = os.stat(fname)[-1]
+    if path in filedatadict:
+        dat['creation'] = filedatadict[path]['creation']
+    elif os.path.isdir(path):
+        # get creation date from path itself (ctime/metadata change)
+        dat['creation'] = os.stat(path)[-1]
     else:
         # load creation date: check git repo history
-        gitoutput = call_git("log", "--format=%at", "--follow", "--", fname,)
+        gitoutput = call_git("log", "--format=%at", "--follow", "--", path,)
         if (gitoutput):
             dat['creation'] = int(gitoutput.split('\n')[-2])
         else:
             try:
-                print "NOTICE: Had to stat file '%s'" % fname
-                # get creation date from fname itself (ctime/metadata change)
-                dat['creation'] = os.stat(fname)[-1]
+                print "NOTICE: Had to stat file '%s'" % path
+                # get creation date from path itself (ctime/metadata change)
+                dat['creation'] = os.stat(path)[-1]
             except OSError, e:
-                print "NOTICE: Error trying to stat file '%s'" % fname
+                print "NOTICE: Error trying to stat file '%s'" % path
                 dat['creation'] = nowtime
 
-    # set the dictionary attribute
-    filedatadict[ fname ] = dat
-    #print "Set fname ", fname, "data:", dat
+    # Set the dictionary attribute
+    filedatadict[path] = dat
+    #print "Set path ", path, "data:", dat
 
-def apply_file_attr(fname, filedatadict):
-    if not os.path.exists(fname):
-        print "Can't set xattr for fname '%s' because it doesn't exist." % (
-                fname)
+def apply_file_attr(path, filedatadict):
+    if not os.path.exists(path):
+        del filedatadict[path]
         return
-    if not fname in filedatadict:
-        print "fname '%s' was unexpectedly not in .gitxattr" % fname
-        load_xattr_into_dict(fname, filedatadict)
+    if not path in filedatadict:
+        print "path '%s' was unexpectedly not in .gitxattr" % path
+        load_xattr_into_dict(path, filedatadict)
         return
-    data = filedatadict[ fname ]
-    # set date: (access, modified) ; or on mac (created, modified)
+    data = filedatadict[path]
+    # Set date: (access, modified) ; or on mac (created, modified)
     try:
-        os.utime(fname, (data['creation'], data['creation']))
+        os.utime(path, (data['creation'], data['creation']))
     except OSError, e:
-        print "Couldn't apply attributes to file '%s'" % fname
+        print "Couldn't apply attributes to file '%s'" % path
         return
 
-    os.utime(fname, (nowtime, nowtime))
+    os.utime(path, (nowtime, nowtime))
 
     # set xattrs
     try:
         storedxa = data['xattrs']
     except KeyError:
         storedxa = {}
-    xa = xattr.xattr(fname)
+    xa = xattr.xattr(path)
     extraneous = set(xa) - set(storedxa)
     # delete extraneous xattrs
     for k in extraneous:
@@ -154,22 +153,22 @@ def build_initial_attr():
     gitoutput = call_git("ls-files", "--cached","-z",)
     filenames = gitoutput.split('\x00')[:-1]
     extend_directory_names(filenames)
-    for fname in filenames:
-        load_xattr_into_dict(fname, filedatadict)
+    for path in filenames:
+        load_xattr_into_dict(path, filedatadict)
     return filedatadict
 
 def force_update_attr(filedatadict):
-    "Removes nonexistent attributes and updates new ones"
+    """Removes nonexistent attributes and updates new ones"""
     print "Forcing update."
     gitoutput = call_git("ls-files", "--cached","-z",)
     filenames = gitoutput.split('\x00')[:-1]
     extend_directory_names(filenames)
-    for fname in set(filedatadict) - set(filenames):
-        print "deleting key", fname
-        del filedatadict[fname]
-    for fname in filenames:
-        #print "Loading xattrs for", fname
-        load_xattr_into_dict(fname, filedatadict)
+    for path in set(filedatadict) - set(filenames):
+        print "deleting key", path
+        del filedatadict[path]
+    for path in filenames:
+        #print "Loading xattrs for", path
+        load_xattr_into_dict(path, filedatadict)
 
 def force_apply_all(filedatadict):
     for filename in filedatadict:
