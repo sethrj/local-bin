@@ -83,8 +83,8 @@ def get_directory_names():
 
 #******************************************************************************#
 # LOADING AND SETTING INDIVIDUAL FILE XATTRS
-_yellow_color = xattr_key_decode("AAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
-_green_color  = xattr_key_decode("AAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
+# _yellow_color = xattr_key_decode("AAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
+# _green_color  = xattr_key_decode("AAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")
 
 def load_xattr_into_dict(path, filedatadict):
     dat = {}
@@ -96,9 +96,9 @@ def load_xattr_into_dict(path, filedatadict):
 
     # Set default colors
     #if path.endswith("CMakeLists.txt") or path.endswith(".cmake"):
-    if path.endswith("CMakeLists.txt"):
-        # Set CMake finder color
-        xa['com.apple.FinderInfo'] = _yellow_color
+    #if path.endswith("CMakeLists.txt"):
+    #    # Set CMake finder color
+    #    xa['com.apple.FinderInfo'] = _yellow_color
     #elif path.endswith(".i"):
     #    # Set SWIG finder color
     #    xa['com.apple.FinderInfo'] = _green_color
@@ -288,6 +288,7 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     tasks = {
+            'apply'        : force_apply_all,
             'reset'        : lambda data: None,
             'update'       : force_update_attr,
             'print'        : print_files,
@@ -310,23 +311,28 @@ def main(argv=None):
         sys.exit(1)
 
     ### LOAD XATTR DATA
+    needs_write = False
     if not os.path.isfile(xattr_path):
         print "xattr file '%s' not found; initializing" % xattr_path
         xattr_data_dict = build_initial_attr()
+        needs_write = True
     elif task == "reset":
         xattr_data_dict = build_initial_attr()
+        needs_write = True
     else:
         # try opening the file
         with open(xattr_path) as data_file:
             # load old data into dict; if nonexistent, set dict to empty
             xattr_data_dict = json.load(data_file)
+        if task in ("pre-commit", "update", "resolve"):
+            needs_write = True
 
     ### CALL FUNCTION
     fn = tasks[task]
     fn(xattr_data_dict, *argv[1:])
 
     ### WRITE XATTR DATA
-    if task in ("pre-commit", "update", "reset", "resolve"):
+    if needs_write:
         #print "Rewriting '%s' and adding to commit" % xattr_path
         # write new data
         with open(xattr_path, 'wb') as outfile:
