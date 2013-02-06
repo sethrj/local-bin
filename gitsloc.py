@@ -7,19 +7,22 @@ import subprocess
 
 name_and_line = re.compile(".*? \(([a-zA-Z. ]+) .*?\) (.*)")
 
+# Class that stores statistics. Using += on this class accumulates the stats.
 class LineStats(object):
-    __slots__ = ('code','comment','blank')
+    __slots__ = ('name','code','comment','blank')
+    _numeric_fields = __slots__[1:]
 
     def __init__(self, **kwargs):
         # Default values
-        for attr in self.__slots__:
+        for attr in LineStats._numeric_fields:
             setattr(self, attr, 0)
         # Construct with args?
-        for (attr, v) in kwargs:
+        for (attr, v) in kwargs.iteritems():
             setattr(self, attr, v)
 
     def __iadd__(self, rhs):
-        for k in self.__slots__:
+        self.name = rhs.name
+        for k in LineStats._numeric_fields:
             v = getattr(self, k) + getattr(rhs, k)
             setattr(self, k, v)
         return self
@@ -45,20 +48,26 @@ def blame_contents(path):
     text = subprocess.check_output(['git','blame','--',path])
     ext = os.path.splitext(path)[1]
 
-    results = defaultdict(LineStats)
+    results = dict()
 
     for line in text.split('\n'):
         result = name_and_line.match(line)
         if not result:
             continue
         (name,line) = result.groups()
-        name = name.strip()
         line = line.strip()
 
-        stats = results[name]
+        k = name.strip().split()[-1] # Key is last name
+
+        try:
+            stats = results[k]
+        except KeyError:
+            # New entry
+            stats = results[k] = LineStats(name=name.strip())
+
         if not line:
             stats.blank += 1
-        elif ext in (".h", ".cpp", ".i"):
+        elif ext in (".h", ".cpp", '.hh', '.cc', ".i"):
             if (line.startswith('//')
                     or line.startswith('/*')
                     or line.startswith('* ')):
@@ -80,28 +89,45 @@ if __name__ == '__main__':
     files = get_files()
 
     chosen_files = []
-    for ext in ('.h','.c','.hpp','.hh','.cc','.cpp','.i','.py'):
+    for ext in ('.h','.c','.hpp','.hh','.cc','.cpp', '.i','.py',
+            #'.sh', '.cmake', '.txt',
+            ):
         try:
             chosen_files.extend(files[ext])
         except KeyError as e:
             print "No files of type", e
 
+    # Print output every so often
+    stride_num = max(50, len(chosen_files) / 20)
+
     results = defaultdict(LineStats)
-    for path in chosen_files:
-        print "Blaming", path
+    for (i, path) in enumerate(chosen_files):
+        if not i % stride_num:
+            print "Blaming file %4d of %4d : %s" % (i, len(chosen_files), path)
+        # Do git blame on the file
         this_results = blame_contents(path)
         for (k,v) in this_results.iteritems():
+            # Update existing stats
             results[k] += v
 
-    print "%30s %10s %10s %10s" % ("","CODE","COMMENT","BLANK")
+    print "%30s %10s %10s %10s %4s" % ("",
+            "CODE","COMMENT","BLANK","COMMENT/CODE")
     totcode = 0
     totcomment = 0
     totblank = 0
-    for k,v in results.iteritems():
-        print "%30s %10d %10d %10d" % (k,v.code, v.comment, v.blank)
+
+    # Sort keys based on increasing amount of code lines
+    sorted_keys = sorted(results, key=lambda k: results[k].code)
+
+    # Print results
+    for k in reversed(sorted_keys):
+        v = results[k]
+        comment_fraction = float(v.comment) / v.code
+        print "%30s %10d %10d %10d %4.2f" % (v.name, v.code, v.comment,
+                v.blank, comment_fraction)
         totcode    += v.code
         totcomment += v.comment
         totblank   += v.blank
-    print "%30s %10d %10d %10d" % ("TOTAL",totcode, totcomment, totblank)
+    print "%30s %10d %10d %10d" % ("TOTAL", totcode, totcomment, totblank)
 
 
