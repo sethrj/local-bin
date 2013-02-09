@@ -142,14 +142,18 @@ def apply_file_attr(path, filedatadict):
         load_xattr_into_dict(path, filedatadict)
         return
     data = filedatadict[path]
-    # Set date: (access, modified) ; or on mac (created, modified)
-    try:
-        os.utime(path, (data['creation'], data['creation']))
-    except OSError, e:
-        print "Couldn't apply attributes to file '%s'" % path
-        return
 
-    os.utime(path, (nowtime, nowtime))
+    # Leave CMake files alone to avoid regenerating
+    if not path.endswith("CMakeLists.txt"):
+        # Set date: (access, modified) ; or on mac (created, modified)
+        try:
+            os.utime(path, (data['creation'], data['creation']))
+        except OSError, e:
+            print "Couldn't apply attributes to file '%s'" % path
+            return
+
+        # update modified time
+        os.utime(path, (nowtime, nowtime))
 
     # set xattrs
     try:
