@@ -1,0 +1,115 @@
+#!/usr/bin/python
+#
+# Author: Seth R. Johnson
+#
+# Note: to make this work on a Mac system, the system-installed Python
+# (/usr/bin, not /opt/bin) should be used. That's why I don't use `env python`.
+
+from argparse import ArgumentParser
+import binascii
+import os
+import sys
+
+try:
+    import xattr
+except ImportError, e:
+    print "Could not import xattr; may be on non-mac system"
+    sys.exit(1)
+
+#******************************************************************************#
+def xattr_to_dict(xa):
+    return dict((k, binascii.b2a_base64(v)) for (k, v) in xa.iteritems())
+
+def xattr_key_decode(txt):
+    return binascii.a2b_base64(txt)
+
+def get_directory_names():
+    """Add directories in pwd to the list of filenames"""
+    dirnames = []
+
+    return dirnames
+
+#******************************************************************************#
+# LOADING AND SETTING INDIVIDUAL FILE XATTRS
+_grey   = '\x00'*9 + '\x02' + '\x00'*22
+_green  = '\x00'*9 + '\x04' + '\x00'*22
+_violet = '\x00'*9 + '\x06' + '\x00'*22
+_blue   = '\x00'*9 + '\x08' + '\x00'*22
+_yellow = '\x00'*9 + '\x0A' + '\x00'*22
+_red    = '\x00'*9 + '\x0C' + '\x00'*22
+_orange = '\x00'*9 + '\x0E' + '\x00'*22
+_label_attr_name = "com.apple.FinderInfo"
+
+def set_dir_colors(head, tail):
+    path = os.path.join(head, tail)
+    xa = xattr.xattr(path)
+
+    if tail == "cmake":
+        xa[_label_attr_name] = _yellow
+    elif tail.startswith("py"):
+        xa[_label_attr_name] = _green
+    elif tail.startswith("test"):
+        xa[_label_attr_name] = _violet
+    elif tail.startswith("inst_"):
+        xa[_label_attr_name] = _grey
+
+def set_file_colors(head, tail):
+    path = os.path.join(head, tail)
+    xa = xattr.xattr(path)
+
+    (tailroot, ext) = os.path.splitext(tail)
+
+    # Set default colors
+    if tail == "CMakeLists.txt":
+        xa[_label_attr_name] = _yellow
+    elif ext == ".i":
+        xa[_label_attr_name] = get_swig_color(path)
+    elif tail.endswith(".pt.cc"):
+        xa[_label_attr_name] = _grey
+
+def get_swig_color(path):
+    # Check for whether it's a module
+    is_module = False
+    with open(path, 'rU') as f:
+        for (i, line) in enumerate(f):
+            if i > 10:
+                break
+            if "%module" in line:
+                is_module = True
+                break
+    if is_module:
+        return _green
+    else:
+        return _grey
+
+def apply_recursively(root_path):
+    for (root, dirs, files) in os.walk(root_path):
+        for dn in dirs:
+            if dn.startswith('.'):
+                # Skip invisibles
+                continue
+            set_dir_colors(root, dn)
+
+        for fn in files:
+            set_file_colors(root, fn)
+
+#******************************************************************************#
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = ArgumentParser("Set Finder color labels for the given directory")
+
+    parser.add_argument("root",
+            default=".",
+            nargs='?',
+            help="Directory to traverse",)
+
+    result = parser.parse_args(argv)
+
+    apply_recursively(result.root)
+
+################################################################################
+if __name__ == '__main__':
+    main()
+
