@@ -7,9 +7,9 @@ from subprocess import check_call
 import sys
 
 hostname = os.uname()[1]
-default_other = "sethjmbpro"
+default_other = "sethjmacpro"
 if default_other in hostname:
-    default_other = "sethjmacpro"
+    default_other = "sierrajuliet"
 
 def scp(source, dest, paths, pwd=None):
     log.info("Copying from %s to %s:", source, dest)
