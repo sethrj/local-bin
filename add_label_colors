@@ -64,6 +64,8 @@ def set_file_colors(head, tail):
         xa[_label_attr_name] = _yellow
     elif ext == ".i":
         xa[_label_attr_name] = get_swig_color(path)
+    elif ext == ".omn":
+        xa[_label_attr_name] = _orange
     elif tail.endswith(".pt.cc"):
         xa[_label_attr_name] = _grey
 
