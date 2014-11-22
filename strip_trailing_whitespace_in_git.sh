@@ -1,1 +1,1 @@
-/Users/s3j/_code/Exnihilo/pkg_tools/strip_trailing_whitespace_in_git.sh
+/usr/local/src/Exnihilo/environment/tools/strip_trailing_whitespace_in_git.sh
