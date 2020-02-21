@@ -1,0 +1,28 @@
+#!/bin/bash -e
+###############################################################################
+# File  : bin/git-archive.sh
+# Author: Seth R Johnson
+# Date  : Fri Jan 13 05:00:54 2017
+###############################################################################
+
+BRANCH=$1
+REMOTE=$2
+
+if [ -z "${BRANCH}" ]; then
+  echo "Usage: $0 branch [remote]"
+  exit 2
+fi
+
+if [ -z "${REMOTE}" ]; then
+  REMOTE=origin
+fi
+
+set -x
+OLD=${BRANCH}
+NEW=archive/${BRANCH}
+
+git push ${REMOTE} ${REMOTE}/${OLD}:refs/heads/${NEW} :${OLD}
+
+###############################################################################
+# end of bin/git-archive.sh
+###############################################################################

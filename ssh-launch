@@ -1,0 +1,5 @@
+#!/bin/bash -e
+
+printf "ssh destination: "
+read SSH_DST
+exec ssh $SSH_DST

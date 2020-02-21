@@ -1,0 +1,30 @@
+#!/bin/sh -e
+#
+# This fetches a merge request from the upstream gitlab repo:
+#
+#   git mr 421
+#
+# will fetch merge request !421.
+
+usage () {
+  echo "Usage: $0 [remote] mrid" 1>&2
+  exit 2
+}
+
+case $# in
+  1) REMOTE=upstream MR=$1;;
+  2) REMOTE=$1 MR=$2;;
+  *) usage ;;
+esac
+
+URL=$(git config --get remote.upstream.url)
+
+if [[ "${URL}" =~ "github.com" ]]; then
+  ROOT=pull
+else
+  ROOT=merge-requests
+fi
+
+BRANCH="mr/${REMOTE}-${MR}"
+git fetch ${REMOTE} ${ROOT}/${MR}/head:${BRANCH}
+git checkout ${BRANCH}
