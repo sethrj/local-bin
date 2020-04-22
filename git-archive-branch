@@ -21,7 +21,9 @@ set -x
 OLD=${BRANCH}
 NEW=archive/${BRANCH}
 
-git push ${REMOTE} ${REMOTE}/${OLD}:refs/heads/${NEW} :${OLD}
+git push -f ${REMOTE} ${BRANCH}
+git push ${REMOTE} ${OLD}:refs/heads/${NEW} :${OLD}
+git branch -D ${BRANCH}
 
 ###############################################################################
 # end of bin/git-archive.sh
