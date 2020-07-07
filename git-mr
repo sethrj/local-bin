@@ -17,7 +17,7 @@ case $# in
   *) usage ;;
 esac
 
-URL=$(git config --get remote.upstream.url)
+URL=$(git config --get remote.${REMOTE}.url)
 
 if [[ "${URL}" =~ "github.com" ]]; then
   ROOT=pull
