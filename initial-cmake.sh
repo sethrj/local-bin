@@ -5,23 +5,16 @@
 
 usage () {
   echo "Usage: $0 [-b build_dir] [-p prefix] [-G generator] " >&2
-  echo "       source_dir [args]" >&2
+  echo "       [source_dir] [args]" >&2
   exit 2
 }
 
 # Approximation of absolute path 
 abspath() { echo "$(cd "$(dirname "$1")"; pwd)/$(basename "$1")" ; }
 
-# Default options
-build_dir=build
-prefix_dir=install
-generator="$(
-  if hash ninja 2>/dev/null ; then 
-    echo "Ninja"
-  else 
-    echo "Unix Makefiles" 
-  fi
-)"
+build_dir=
+prefix_dir=
+generator=
 
 # Process options
 OPTIND=1
@@ -36,9 +29,28 @@ while getopts "b:p:G:" opt; do
 done
 shift $((OPTIND-1))
 
+# Set defaults if not given
+if [ -z "${prefix_dir}" ]; then
+  prefix_dir="${PWD}/install"
+fi
+if [ -z "${build_dir}" ]; then
+  build_dir="${PWD}/build"
+fi
+if [ -z "${generator}" ]; then
+  if hash ninja 2>/dev/null ; then 
+    generator=Ninja
+  else 
+    generator="Unix Makefiles" 
+  fi
+fi
+
 # Process first argument (source)
-source_dir="$(abspath "$1")"
-shift
+if [ $# -gt 0 ]; then
+  source_dir="$(abspath "$1")"
+  shift
+else
+  source_dir="$PWD"
+fi
 
 mkdir ${build_dir} || (
   echo "Build directory exists at ${build_dir}" >&2
@@ -48,8 +60,10 @@ cd ${build_dir}
 
 # Call cmake with remaining arguments
 set -x
-exec cmake -G "${generator}" "-DCMAKE_PREFIX_PATH:PATH=${prefix_dir}" \
-     "$@" "${source_dir}"
+exec cmake -G "${generator}" \
+  "-DCMAKE_INSTALL_PREFIX:PATH=${prefix_dir}" \
+  "-DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON" \
+  "$@" "${source_dir}"
 
 ###############################################################################
 # end of initial-cmake.sh
