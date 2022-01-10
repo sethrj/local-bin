@@ -1,0 +1,4 @@
+#!/bin/sh -ex
+# TODO: use python and clean this up
+
+otool -l "$1" | grep -A 3 LC_RPATH
