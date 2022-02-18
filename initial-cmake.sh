@@ -54,12 +54,16 @@ else
   source_dir="$PWD"
 fi
 
-if ! mkdir "${build_dir}" ; then
+if ! mkdir "${build_dir}" 2>/dev/null ; then
   if [ $overwrite = true ] ; then
     rm -rf "${build_dir}/CMakeCache.txt" "${build_dir}/CMakeFiles"
   else
-    echo "Build directory exists at ${build_dir}" >&2
+    echo "Build directory exists at ${build_dir}: use -f to override" >&2
     exit 1
+  fi
+  if test -L "${build_dir}" ; then
+    build_dir="$(readlink "${build_dir}")"
+    echo "Build directory is a symlink -> ${build_dir}"
   fi
 fi
 cd "${build_dir}"
