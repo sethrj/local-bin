@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021 UT-Battelle, LLC and other Celeritas Developers.
+# Copyright 2021-2022 UT-Battelle, LLC, and other Celeritas developers.
 # See the top-level COPYRIGHT file for details.
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 """\
@@ -54,14 +54,7 @@ class {name}
 }};
 
 //---------------------------------------------------------------------------//
-{namespace_end}
-
-#include "{name}.i.{hext}"
-'''
-
-INLINE_FILE = '''\
-
-{namespace_begin}
+// INLINE DEFINITIONS
 //---------------------------------------------------------------------------//
 /*!
  * Construct with defaults.
@@ -107,17 +100,24 @@ class {name}Test : public celeritas::Test
 // TESTS
 //---------------------------------------------------------------------------//
 
-TEST_F({name}Test, all)
+TEST_F({name}Test, host)
 {{
-    // {capabbr}TestInput input;
-    // input.num_threads = 0;
-    // auto result = {lowabbr}_test(input);
     // PRINT_EXPECTED(result.foo);
     // EXPECT_VEC_SOFT_EQ(expected_foo, result.foo);
 }}
+
+// TEST_F({name}Test, TEST_IF_CELER_DEVICE(device))
+// {{
+//     {capabbr}TestInput input;
+//     {lowabbr}_test(input);
+// }}
 '''
 
 TEST_HEADER_FILE = '''
+#include "base/Assert.hh"
+#include "base/Macros.hh"
+#include "base/Types.hh"
+
 namespace celeritas_test
 {{
 using celeritas::Ownership;
@@ -133,14 +133,16 @@ struct {capabbr}TestInput
 }};
 
 //---------------------------------------------------------------------------//
-//! Output results
-struct {capabbr}TestOutput
-{{
-}};
+//! Run on device
+void {lowabbr}_test(const {capabbr}TestInput&);
 
 //---------------------------------------------------------------------------//
-//! Run on device and return results
-{capabbr}TestOutput {lowabbr}_test({capabbr}TestInput);
+#if !CELER_USE_DEVICE
+inline void {lowabbr}_test(const {capabbr}TestInput&)
+{{
+    CELER_NOT_CONFIGURED("CUDA or HIP");
+}}
+#endif
 
 //---------------------------------------------------------------------------//
 }} // namespace celeritas_test
@@ -149,10 +151,9 @@ struct {capabbr}TestOutput
 TEST_CODE_FILE = '''\
 #include "{name}.test.hh"
 
-#include <thrust/device_vector.h>
-#include "base/KernelParamCalculator.cuda.hh"
-
-using thrust::raw_pointer_cast;
+#include "base/device_runtime_api.h"
+#include "base/KernelParamCalculator.device.hh"
+#include "comm/Device.hh"
 
 namespace celeritas_test
 {{
@@ -162,10 +163,10 @@ namespace
 // KERNELS
 //---------------------------------------------------------------------------//
 
-__global__ void {lowabbr}_test_kernel(unsigned int size)
+__global__ void {lowabbr}_test_kernel({capabbr}TestInput input)
 {{
     auto tid = celeritas::KernelParamCalculator::thread_id();
-    if (tid.get() >= size)
+    if (tid.get() >= input.num_threads)
         return;
 }}
 }}
@@ -174,19 +175,14 @@ __global__ void {lowabbr}_test_kernel(unsigned int size)
 // TESTING INTERFACE
 //---------------------------------------------------------------------------//
 //! Run on device and return results
-{capabbr}TestOutput {lowabbr}_test({capabbr}TestInput input)
+void {lowabbr}_test(const {capabbr}TestInput& input)
 {{
-    static const celeritas::KernelParamCalculator calc_launch_params(
-        {lowabbr}_test_kernel, "{lowabbr}_test");
-    auto params = calc_launch_params(input.num_threads);
-    {lowabbr}_test_kernel<<<params.grid_size, params.block_size>>>(
-        input.num_threads);
+    CELER_LAUNCH_KERNEL({lowabbr}_test,
+                        celeritas::device().default_block_size(),
+                        input.num_threads,
+                        input);
 
-    CELER_CUDA_CHECK_ERROR();
-    CELER_CUDA_CALL(cudaDeviceSynchronize());
-
-    {capabbr}TestOutput result;
-    return result;
+    CELER_DEVICE_CALL_PREFIX(DeviceSynchronize());
 }}
 
 //---------------------------------------------------------------------------//
@@ -205,7 +201,7 @@ SWIG_FILE = '''\
 
 CMAKE_TOP = '''\
 #{modeline:-^77s}#
-# Copyright {year} UT-Battelle, LLC and other Celeritas Developers.
+# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
 # See the top-level COPYRIGHT file for details.
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 '''
@@ -252,7 +248,7 @@ endfunction()
 PYTHON_TOP = '''\
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright {year} UT-Battelle, LLC and other Celeritas Developers.
+# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
 # See the top-level COPYRIGHT file for details.
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 '''
@@ -265,7 +261,7 @@ PYTHON_FILE = '''\
 
 SHELL_TOP = '''\
 #!/bin/sh -ex
-# Copyright {year} UT-Battelle, LLC and other Celeritas Developers.
+# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
 # See the top-level COPYRIGHT file for details.
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 '''
@@ -274,25 +270,59 @@ SHELL_FILE = '''\
 
 '''
 
+OMN_TOP = '''\
+! Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
+! See the top-level COPYRIGHT file for details.
+! SPDX-License-Identifier: (Apache-2.0 OR MIT)
+'''
+
+ORANGE_FILE = '''
+[GEOMETRY]
+global "global"
+comp         : matid
+    galactic   0
+    detector   1
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+
+[UNIVERSE=general global]
+interior "world_box"
+
+[UNIVERSE][SHAPE=box world_box]
+widths 10000 10000 10000  ! note: units are in cm
+
+[UNIVERSE][SHAPE=cyl mycyl]
+axis z
+radius 10
+length 20
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+
+[UNIVERSE][CELL detector]
+comp detector
+shapes mycyl
+
+[UNIVERSE][CELL world_fill]
+comp galactic
+shapes world_box ~mycyl
+'''
+
 YEAR = datetime.today().year
 
 TEMPLATES = {
     'hh': HEADER_FILE,
-    'i.hh': INLINE_FILE,
     'cc': CODE_FILE,
     'cu': CODE_FILE,
     'cuh': HEADER_FILE,
     'test.cc': TEST_HARNESS_FILE,
     'test.cu': TEST_CODE_FILE,
     'test.hh': TEST_HEADER_FILE,
-    'k.cuh': INLINE_FILE,
-    'i.cuh': INLINE_FILE,
-    't.cuh': INLINE_FILE,
     'i': SWIG_FILE,
     'cmake': CMAKE_FILE,
     'CMakeLists.txt': CMAKELISTS_FILE,
     'py': PYTHON_FILE,
     'sh': SHELL_FILE,
+    'org.omn': ORANGE_FILE,
 }
 
 LANG = {
@@ -306,6 +336,7 @@ LANG = {
     'CMakeLists.txt': "CMake",
     'py': "Python",
     'sh': "Shell",
+    'omn': "Omnibus",
 }
 
 TOPS = {
@@ -315,6 +346,7 @@ TOPS = {
     'CMake': CMAKE_TOP,
     'Python': PYTHON_TOP,
     'Shell': SHELL_TOP,
+    'Omnibus': OMN_TOP,
 }
 
 HEXT = {
