@@ -1,0 +1,4 @@
+#!/bin/sh -e
+PY="$(which python3)"
+printf "\e[2;37mpython:\e[0;37m redirecting to ${PY}\e[m\n"
+exec "${PY}" "$@"

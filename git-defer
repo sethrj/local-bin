@@ -1,0 +1,8 @@
+#!/bin/sh -e
+
+test -n "$1" || (
+  echo "usage: $0 branch"
+  exit 1
+)
+
+exec git branch -m $1 defer/$1

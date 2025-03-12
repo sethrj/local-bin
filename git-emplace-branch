@@ -1,24 +1,23 @@
-#!/bin/sh
+#!/bin/sh -e
 #
 # git-emplace-branch
 # Fri Aug 23 11:48:51 2013
 # Seth R Johnson
 #
-# This applies all commits between master and the specified branch to the
+# This applies all commits unique to the specified branch to the
 # current working branch.
 
 usage () {
 	echo "usage:" $@
-	exit 127
+	exit 1
 }
 
-if test $# -lt 1
+if [ $# -lt 1 ]
 then
 	usage "$0 <branch>"
 fi
 
 branch=$1
-mergebase=$(git merge-base $branch master)
+mergebase=$(git merge-base $branch HEAD)
 # Plop that whole branch on top of the current one
-git cherry-pick $mergebase...$branch
-
+exec git cherry-pick $mergebase...$branch

@@ -68,6 +68,12 @@ if ! mkdir "${build_dir}" 2>/dev/null ; then
 fi
 cd "${build_dir}"
 
+if hash tmutil 2>/dev/null; then
+  # Don't back up build directories
+  tmutil addexclusion "${build_dir}" \
+    || echo "Failed to exclude from time machine: $?"
+fi
+
 # Call cmake with remaining arguments
 set -x
 exec cmake -G "${generator}" \

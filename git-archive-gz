@@ -1,9 +1,0 @@
-#!/bin/sh
-
-currev=$(git rev-parse --short HEAD)
-basepath=$(git rev-parse --show-toplevel)
-dest="${basepath}_${currev}.tgz"
-
-echo "Saving to $dest"
-
-git archive --format=tar HEAD | gzip > $dest

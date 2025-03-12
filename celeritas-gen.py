@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2021-2022 UT-Battelle, LLC, and other Celeritas developers.
-# See the top-level COPYRIGHT file for details.
+#!/usr/bin/env python
+# Copyright Celeritas contributors: see top-level COPYRIGHT file for details
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 """\
 Generate file stubs for Celeritas.
@@ -17,15 +15,33 @@ import sys
 
 ###############################################################################
 
-CLIKE_TOP = '''\
-//{modeline:-^75s}//
-// Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
-// See the top-level COPYRIGHT file for details.
-// SPDX-License-Identifier: (Apache-2.0 OR MIT)
-//---------------------------------------------------------------------------//
-//! \\file {relpath}{filename}
-//---------------------------------------------------------------------------//
-'''
+CODE_LICENSE = "(Apache-2.0 OR MIT)"
+DOC_LICENSE = "CC-BY-4.0"
+
+def _make_top(comment_prefix,
+              preamble=None, postamble=None, license=CODE_LICENSE):
+    lines = []
+    def _append_lines(s):
+        if s:
+            if isinstance(s, str):
+                lines.append(s)
+            else:
+                lines.extend(s)
+    _append_lines(preamble)
+    lines.extend(comment_prefix + " " + line for line in [
+        "Copyright Celeritas contributors: see top-level COPYRIGHT file for details",
+        "SPDX-License-Identifier: " + license,
+    ])
+    _append_lines(postamble)
+    lines.append("")
+    return "\n".join(lines)
+
+_C_SEP = "".join(["//", "-" * 75, "//"]) # //-----...---//
+CXX_TOP = _make_top(
+    "//",
+    "//{modeline:-^75s}//",
+    [_C_SEP, "//! \\file {dirname}{basename}", _C_SEP]
+)
 
 HEADER_FILE = '''\
 #pragma once
@@ -44,7 +60,7 @@ class {name}
 {{
   public:
     //!@{{
-    //! Type aliases
+    //! \\name Type aliases
     <++>
     //!@}}
 
@@ -77,28 +93,32 @@ CODE_FILE = '''\
 {namespace_end}
 '''
 
+C_HEADER_FILE = '''\
+#pragma once
+
+//---------------------------------------------------------------------------//
+'''
+
+C_CODE_FILE = '''\
+#include "{name}.{hext}"
+
+//---------------------------------------------------------------------------//
+'''
+
 TEST_HARNESS_FILE = '''\
-#include "{relpath}{name}.{hext}"
+#include "{dirname}{name}.{hext}"
 
 #include "celeritas_test.hh"
 // #include "{name}.test.hh"
 
-using {namespace}::{name};
-// using namespace celeritas_test;
-
-//---------------------------------------------------------------------------//
-// TEST HARNESS
+{namespace_begin}
 //---------------------------------------------------------------------------//
 
-class {name}Test : public celeritas::Test
+class {name}Test : public ::celeritas::test::Test
 {{
   protected:
     void SetUp() override {{}}
 }};
-
-//---------------------------------------------------------------------------//
-// TESTS
-//---------------------------------------------------------------------------//
 
 TEST_F({name}Test, host)
 {{
@@ -111,63 +131,166 @@ TEST_F({name}Test, host)
 //     {capabbr}TestInput input;
 //     {lowabbr}_test(input);
 // }}
+
+//---------------------------------------------------------------------------//
+{namespace_end}
 '''
 
 TEST_HEADER_FILE = '''
+#pragma once
+
 #include "corecel/Assert.hh"
+#include "corecel/Config.hh"
 #include "corecel/Macros.hh"
 #include "corecel/Types.hh"
 
-namespace celeritas_test
+{namespace_begin}
+//---------------------------------------------------------------------------//
+// DATA
+//---------------------------------------------------------------------------//
+template<Ownership W, MemSpace M>
+struct {capabbr}TestParamsData
 {{
-using celeritas::Ownership;
-using celeritas::MemSpace;
+    // FIXME
+    // {capabbr}ParamsData<W, M>  geometry;
+    // RngParamsData<W, M>  rng;
 
-//---------------------------------------------------------------------------//
-// TESTING INTERFACE
-//---------------------------------------------------------------------------//
-//! Input data
-struct {capabbr}TestInput
-{{
-    int num_threads;
+    explicit CELER_FUNCTION operator bool() const
+    {{
+        // FIXME
+        // return geometry && rng;
+        return false;
+    }}
+
+    template<Ownership W2, MemSpace M2>
+    {capabbr}TestParamsData& operator=(const {capabbr}TestParamsData<W2, M2>& other)
+    {{
+        CELER_EXPECT(other);
+        // FIXME
+        // geometry = other.geometry;
+        // rng      = other.rng;
+        return *this;
+    }}
 }};
 
 //---------------------------------------------------------------------------//
+template<Ownership W, MemSpace M>
+struct {capabbr}TestStateData
+{{
+    template<class T>
+    using StateItems = {corecel_ns}StateCollection<T, W, M>;
+
+    // FIXME
+    // {capabbr}StateData<W, M> geometry;
+    // RngStateData<W, M> rng;
+    // StateItems<bool> alive;
+
+    CELER_FUNCTION {corecel_ns}size_type size() const {{
+        // FIXME
+       // return geometry.size();
+       }}
+
+    explicit CELER_FUNCTION operator bool() const
+    {{
+        // FIXME
+        // return geometry && rng && !alive.empty();
+        return false;
+    }}
+
+    //! Assign from another set of data
+    template<Ownership W2, MemSpace M2>
+    {capabbr}TestStateData& operator=({capabbr}TestStateData<W2, M2>& other)
+    {{
+        CELER_EXPECT(other);
+        // FIXME
+        // geometry = other.geometry;
+        // rng      = other.rng;
+        // alive    = other.alive;
+        return *this;
+    }}
+}};
+
+//---------------------------------------------------------------------------//
+template<MemSpace M>
+inline void resize({capabbr}TestStateData<Ownership::value, M>* state,
+                   const HostCRef<{capabbr}TestParamsData>&     params,
+                   {corecel_ns}size_type                             size)
+{{
+    CELER_EXPECT(params);
+    CELER_EXPECT(size > 0);
+    // FIXME
+    // resize(&state->geometry, params.geometry, size);
+    // resize(&state->alive, size);
+    // fill(state->alive, 0)
+    CELER_ENSURE(state.size() == size);
+}}
+
+//---------------------------------------------------------------------------//
+// LAUNCHER
+//---------------------------------------------------------------------------//
+struct {capabbr}TestExecutor
+{{
+    using ParamsRef = NativeCRef<{capabbr}TestParamsData>;
+    using StateRef  = NativeRef<{capabbr}TestStateData>;
+
+    const ParamsRef& params;
+    const StateRef&  state;
+
+    inline CELER_FUNCTION void operator()({corecel_ns}ThreadId tid) const;
+}};
+
+//---------------------------------------------------------------------------//
+CELER_FUNCTION void {capabbr}TestExecutor::operator()({corecel_ns}ThreadId tid) const
+{{
+    // FIXME
+}}
+
+//---------------------------------------------------------------------------//
+// DEVICE KERNEL EXECUTION
+//---------------------------------------------------------------------------//
 //! Run on device
-void {lowabbr}_test(const {capabbr}TestInput&);
+void {lowabbr}_test(const DeviceCRef<{capabbr}TestParamsData>&,
+            const DeviceRef<{capabbr}TestStateData>&);
 
 //---------------------------------------------------------------------------//
 #if !CELER_USE_DEVICE
-inline void {lowabbr}_test(const {capabbr}TestInput&)
+inline void {lowabbr}_test(
+    const DeviceCRef<{capabbr}TestParamsData>&,
+    const DeviceRef<{capabbr}TestStateData>&)
 {{
     CELER_NOT_CONFIGURED("CUDA or HIP");
 }}
 #endif
 
 //---------------------------------------------------------------------------//
-}} // namespace celeritas_test
+{namespace_end}
 '''
 
 TEST_CODE_FILE = '''\
 #include "{name}.test.hh"
 
-#include "corecel/device_runtime_api.h"
+#include "corecel/DeviceRuntimeApi.hh"
+#include "corecel/Types.hh"
 #include "corecel/sys/KernelParamCalculator.device.hh"
 #include "corecel/sys/Device.hh"
 
-namespace celeritas_test
-{{
+{namespace_begin}
 namespace
 {{
 //---------------------------------------------------------------------------//
 // KERNELS
 //---------------------------------------------------------------------------//
 
-__global__ void {lowabbr}_test_kernel({capabbr}TestInput input)
+__global__ void {lowabbr}_test_kernel(
+    const {corecel_ns}DeviceCRef<{capabbr}TestParamsData> params,
+    const {corecel_ns}DeviceRef<{capabbr}TestStateData> state)
 {{
-    auto tid = celeritas::KernelParamCalculator::thread_id();
-    if (tid.get() >= input.num_threads)
+    auto tid = {corecel_ns}KernelParamCalculator::thread_id();
+    if (tid.get() >= state.size())
         return;
+
+    {capabbr}TestExecutor execute{{params, state}};
+    execute(tid);
 }}
 }}
 
@@ -175,36 +298,25 @@ __global__ void {lowabbr}_test_kernel({capabbr}TestInput input)
 // TESTING INTERFACE
 //---------------------------------------------------------------------------//
 //! Run on device and return results
-void {lowabbr}_test(const {capabbr}TestInput& input)
+void {lowabbr}_test(
+    const {corecel_ns}DeviceCRef<{capabbr}TestParamsData>& params,
+    const {corecel_ns}DeviceRef<{capabbr}TestStateData>& state)
 {{
     CELER_LAUNCH_KERNEL({lowabbr}_test,
-                        celeritas::device().default_block_size(),
-                        input.num_threads,
-                        input);
+                        {corecel_ns}device().default_block_size(),
+                        state.size(),
+                        params.ref<MemSpace::native>(),
+                        state);
 
     CELER_DEVICE_CALL_PREFIX(DeviceSynchronize());
 }}
 
 //---------------------------------------------------------------------------//
-}} // namespace celeritas_test
+{namespace_end}
 '''
 
 
-SWIG_FILE = '''\
-%{{
-#include "{name}.{hext}"
-%}}
-
-%include "{name}.{hext}"
-'''
-
-
-CMAKE_TOP = '''\
-#{modeline:-^77s}#
-# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
-# See the top-level COPYRIGHT file for details.
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
-'''
+CMAKE_TOP = _make_top("#", "#{modeline:-^77s}#")
 
 CMAKELISTS_FILE = '''\
 #-----------------------------------------------------------------------------#
@@ -245,13 +357,7 @@ endfunction()
 #-----------------------------------------------------------------------------#
 '''
 
-PYTHON_TOP = '''\
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
-# See the top-level COPYRIGHT file for details.
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
-'''
+PYTHON_TOP = _make_top("#", "#!/usr/bin/env python")
 
 PYTHON_FILE = '''\
 """
@@ -259,22 +365,17 @@ PYTHON_FILE = '''\
 
 '''
 
-SHELL_TOP = '''\
-#!/bin/sh -ex
-# Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
-# See the top-level COPYRIGHT file for details.
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
-'''
+SHELL_TOP = _make_top(
+    "#",
+    ["#!/bin/sh -ex", "#{modeline:-^77s}#"],
+    "#{:-^77s}#".format("")
+)
 
 SHELL_FILE = '''\
 
 '''
 
-OMN_TOP = '''\
-! Copyright {year} UT-Battelle, LLC, and other Celeritas developers.
-! See the top-level COPYRIGHT file for details.
-! SPDX-License-Identifier: (Apache-2.0 OR MIT)
-'''
+OMN_TOP = _make_top("!")
 
 ORANGE_FILE = '''
 [GEOMETRY]
@@ -307,62 +408,110 @@ comp galactic
 shapes world_box ~mycyl
 '''
 
-YEAR = datetime.today().year
+RST_TOP = _make_top("..", license=DOC_LICENSE)
+
+RST_FILE = '''
+.. _{name}:
+
+****************
+{name}
+****************
+
+Text with a link to `Sphinx primer`_ and `RST`_ docs.
+
+.. _Sphinx primer : https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
+.. _RST : https://docutils.sourceforge.io/docs/user/rst/quickref.html
+
+Subsection
+==========
+
+Another paragraph.
+
+.. note:: Don't start a subsection immediately after a section: make sure
+   there's something to say at the start of each one.
+
+Subsubsection
+-------------
+
+These are useful for heavily nested documentation such as API descriptions. ::
+
+    // This code block will be highlighted in the default language, which for
+    // Celeritas is C++.
+    int i = 0;
+'''
 
 TEMPLATES = {
     'hh': HEADER_FILE,
+    'c': C_CODE_FILE,
+    'h': C_HEADER_FILE,
     'cc': CODE_FILE,
     'cu': CODE_FILE,
-    'cuh': HEADER_FILE,
     'test.cc': TEST_HARNESS_FILE,
     'test.cu': TEST_CODE_FILE,
     'test.hh': TEST_HEADER_FILE,
-    'i': SWIG_FILE,
     'cmake': CMAKE_FILE,
     'CMakeLists.txt': CMAKELISTS_FILE,
     'py': PYTHON_FILE,
     'sh': SHELL_FILE,
     'org.omn': ORANGE_FILE,
+    'rst': RST_FILE,
 }
 
 LANG = {
-    'h': "C++",
+    'h': "C",
+    'c': "C",
     'hh': "C++",
     'cc': "C++",
-    'cu': "CUDA",
-    'cuh': "CUDA",
-    'cmake': "CMake",
-    'i': "SWIG",
-    'CMakeLists.txt': "CMake",
-    'py': "Python",
-    'sh': "Shell",
-    'omn': "Omnibus",
+    'cu': "cuda",
+    'cmake': "cmake",
+    'CMakeLists.txt': "cmake",
+    'py': "python",
+    'sh': "sh",
+    'omn': "omnibus",
+    'rst': "rst",
 }
 
 TOPS = {
-    'C++': CLIKE_TOP,
-    'CUDA': CLIKE_TOP,
-    'SWIG': CLIKE_TOP,
-    'CMake': CMAKE_TOP,
-    'Python': PYTHON_TOP,
-    'Shell': SHELL_TOP,
-    'Omnibus': OMN_TOP,
+    'C': CXX_TOP,
+    'C++': CXX_TOP,
+    'cuda': CXX_TOP,
+    'cmake': CMAKE_TOP,
+    'python': PYTHON_TOP,
+    'sh': SHELL_TOP,
+    'omnibus': OMN_TOP,
+    'rst': RST_TOP,
 }
 
 HEXT = {
+    'C': "h",
     'C++': "hh",
-    'CUDA': "cuh",
-    'SWIG': "hh",
+    'cuda': "hh",
 }
 
 
-def generate(root, filename, namespace):
+def generate(repodir, filename, namespace):
     if os.path.exists(filename):
         print("Skipping existing file " + filename)
         return
 
-    relpath = os.path.relpath(filename, start=root)
-    dirname = os.path.dirname(relpath)
+    dirname = os.path.relpath(filename, start=repodir)
+    all_dirs = dirname.split(os.sep)[:-1]
+    if not all_dirs:
+        print("Cannot generate files in the top level of the repository")
+        sys.exit(1)
+
+    if namespace is None:
+        namespace = 'celeritas'
+        if all_dirs[0] in ('app', 'test', 'example'):
+            namespace += '::' + all_dirs[0]
+        if all_dirs[-1] == 'detail':
+            namespace += '::detail'
+
+    # Construct directory name with src/app/test dropped
+    dirname = os.sep.join(all_dirs[1:])
+    if dirname:
+        dirname += os.sep
+
     basename = os.path.basename(filename)
     (name, _, longext) = basename.partition('.')
 
@@ -386,28 +535,24 @@ def generate(root, filename, namespace):
     nsend = []
     for subns in namespace.split('::'):
         nsbeg.append(f'namespace {subns}\n{{')
-        nsend.append(f'}} // namespace {subns}')
+        nsend.append(f'}}  // namespace {subns}')
 
-    relpath = re.sub(r'^[./]+', '', relpath)
-    relpath = re.sub(r'^(src|app|test)/', '', os.path.dirname(relpath))
-    if relpath:
-        relpath = relpath + '/'
     capabbr = re.sub(r'[^A-Z]+', '', name)
     variables = {
         'longext': longext,
         'ext': ext,
-        'hext': HEXT.get(lang, ext),
-        'modeline': "-*-{}-*-".format(lang),
+        'hext': "hh" if lang != "C" else "h",
+        'modeline': f" -*- {lang} -*- ",
         'name': name,
         'namespace': namespace,
         'namespace_begin': "\n".join(nsbeg),
         'namespace_end': "\n".join(reversed(nsend)),
-        'filename': filename,
         'basename': basename,
-        'relpath': relpath,
+        'dirname': dirname,
         'capabbr': capabbr,
         'lowabbr': capabbr.lower(),
-        'year': YEAR,
+        'corecel_ns': "", # or "celeritas::" or someday(?) "corecel::"
+        'celeritas_ns': "",
     }
     with open(filename, 'w') as f:
         f.write((top + template).format(**variables))
@@ -416,6 +561,16 @@ def generate(root, filename, namespace):
             mode = os.fstat(f.fileno()).st_mode
             mode |= 0o111
             os.fchmod(f.fileno(), stat.S_IMODE(mode))
+    return filename
+
+
+def get_main_repo():
+    try:
+        out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'])
+    except subprocess.SubprocessError as e:
+        return ".."
+
+    return out.decode().strip()
 
 
 def main():
@@ -425,19 +580,25 @@ def main():
         'filename', nargs='+',
         help='file names to generate')
     parser.add_argument(
-        '--basedir',
+        '--repodir',
         help='root source directory for file naming')
+    parser.add_argument('-o', '--open',
+        action='store_true',
+        help='call "open" on the created files')
     parser.add_argument(
         '--namespace', '-n',
-        default='celeritas',
-        help='root source directory for file naming')
+        default=None,
+        help='C++ namespace to generate')
     args = parser.parse_args()
-    basedir = args.basedir or os.path.join(
-        subprocess.check_output(['git', 'rev-parse', '--show-toplevel'])
-        .decode().strip(),
-        'src')
+    repodir = args.repodir or get_main_repo()
+    generated = []
     for fn in args.filename:
-        generate(basedir, fn, args.namespace)
+        fn = generate(repodir, fn, args.namespace)
+        if fn:
+            generated.append(fn)
+
+    if args.open and generated:
+        subprocess.call(["open"] + generated)
 
 
 if __name__ == '__main__':
