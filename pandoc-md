@@ -1,0 +1,23 @@
+#!/bin/sh -e
+#-------------------------------- -*- sh -*- ---------------------------------#
+# Copyright Celeritas contributors: see top-level COPYRIGHT file for details
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+#-----------------------------------------------------------------------------#
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 file.md | -" >&2
+    exit 1
+fi
+
+input="$1"
+
+if [ "$input" = "-" ]; then
+    exec pandoc -s -f gfm -t html
+elif [ "${input##*.}" = "md" ]; then
+    base="${input%.md}"
+    exec pandoc -s -f gfm -o "${base}.html" "$input"
+else
+    echo "Error: input must have .md extension or be '-'" >&2
+    echo "Usage: $0 file.md | -" >&2
+    exit 1
+fi

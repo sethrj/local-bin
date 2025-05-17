@@ -1,0 +1,13 @@
+#!/bin/sh -e
+#-------------------------------- -*- sh -*- ---------------------------------#
+# Copyright Celeritas contributors: see top-level COPYRIGHT file for details
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+#-----------------------------------------------------------------------------#
+
+if [ $# -lt 1 ]
+then
+	echo "usage: $0 <regexp>"
+	exit 1
+fi
+
+ninja -t targets all 2>/dev/null | cut -d: -f1 | grep "$@"

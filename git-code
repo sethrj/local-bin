@@ -1,0 +1,10 @@
+#!/bin/sh -e
+
+CODE="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+
+hash "${CODE}" 2>/dev/null || (
+  echo "$0: ${CODE}: not found"
+  exit 1
+)
+
+exec "${CODE}" "$(git rev-parse --show-toplevel)"
