@@ -1,0 +1,17 @@
+#!/bin/sh -e
+#-------------------------------- -*- sh -*- ---------------------------------#
+# Copyright Celeritas contributors: see top-level COPYRIGHT file for details
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+#-----------------------------------------------------------------------------#
+if hash usleep 2>/dev/null; then
+  SLEEP="usleep 500000"
+else
+  SLEEP="sleep 0.5s"
+fi
+
+ARGS="$@" SLEEP="$SLEEP" /bin/sh -e <<'EOF'
+  printf "\e[1;90mLaunching PID \e[1;35m%d\e[0m: " $$
+  echo $ARGS
+  $SLEEP
+  exec $ARGS
+EOF
