@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+#-------------------------------- -*- sh -*- ---------------------------------#
+# Copyright Celeritas contributors: see top-level COPYRIGHT file for details
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+#-----------------------------------------------------------------------------#
+
+import sys
+import html.entities
+
+data = sys.stdin.buffer.read().decode('utf-8', 'replace')
+out = []
+
+for idx, ch in enumerate(data):
+    code = ord(ch)
+    if code > 127:
+        sys.stderr.write(f"Non-ASCII char U+{code:04X} at position {idx}\n")
+        name = html.entities.codepoint2name.get(code)
+        out.append(f"&{name};" if name else f"&#{code};")
+    else:
+        out.append(ch)
+
+sys.stdout.write(''.join(out))
