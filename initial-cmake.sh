@@ -76,7 +76,7 @@ fi
 
 # Call cmake with remaining arguments
 set -x
-exec cmake -G "${generator}" \
+exec cmake -G "${generator}" --log-level=verbose \
   "-DCMAKE_INSTALL_PREFIX:PATH=${prefix_dir}" \
   "-DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON" \
   "$@" "${source_dir}"
