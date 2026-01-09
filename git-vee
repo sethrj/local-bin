@@ -6,10 +6,6 @@ usage () {
   echo "Usage: $0 [ref [...]] " >&2
 }
 
-if [ $# -eq 0 ]; then
-  usage; exit 2
-fi
-
 default="HEAD"
 while getopts "h" opt; do
   case "${opt}" in
@@ -20,10 +16,13 @@ while getopts "h" opt; do
 done
 shift $((OPTIND-1))
 
-set +x
+if [ $# -eq 0 ]; then
+  usage; exit 2
+fi
 
-merge_base=$(git merge-base "$@" $default)
+# First argument
+first_ref=$1
 
 exec git log \
   --decorate --cherry-mark --oneline --graph --boundary \
-  "$@" $default ^${merge_base}
+  "$first_ref...$default" "$@" 
