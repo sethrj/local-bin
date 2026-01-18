@@ -39,7 +39,7 @@ if [ -z "${build_dir}" ]; then
   build_dir="${PWD}/build"
 fi
 if [ -z "${generator}" ]; then
-  if hash ninja 2>/dev/null ; then 
+  if command -v ninja >/dev/null 2>&1 ; then 
     generator=Ninja
   else 
     generator="Unix Makefiles" 
@@ -68,7 +68,7 @@ if ! mkdir "${build_dir}" 2>/dev/null ; then
 fi
 cd "${build_dir}"
 
-if hash tmutil 2>/dev/null; then
+if command -v tmutil >/dev/null 2>&1 ; then
   # Don't back up build directories
   tmutil addexclusion "${build_dir}" \
     || echo "Failed to exclude from time machine: $?"
