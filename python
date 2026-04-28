@@ -1,4 +1,12 @@
-#!/bin/sh -e
-PY="$(which python3)"
-printf "\e[2;37mpython:\e[0;37m redirecting to ${PY}\e[m\n" >&2
-exec "${PY}" "$@"
+#!/bin/sh
+# NOTE: this must be a shell script in PATH to be visible by configure scripts
+# and so forth that invoke python rather than python3
+
+python_=$(command -v python3 2>/dev/null || printf "")
+if [ -z "$python_" ]; then
+  printf "\e[31;40m%s:\e[0;37m %s\e[m\n" "$0" "no python nor python3 found" >&2
+  exit 1
+fi
+
+printf "\e[2;37m%s:\e[0;37m %s\e[m\n" "$0" "redirecting to ${python_}" >&2
+exec "${python_}" "$@"

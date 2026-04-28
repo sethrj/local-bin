@@ -5,7 +5,7 @@
 
 usage () {
   echo "Usage: $0 [-f] [-b build_dir] [-p prefix] [-G generator] " >&2
-  echo "       [source_dir] [args]" >&2
+  echo "       [-P preset] [source_dir] [args]" >&2
   exit 2
 }
 
@@ -16,14 +16,16 @@ overwrite=false
 build_dir=
 prefix_dir=
 generator=
+extra_args=
 
 # Process options
 OPTIND=1
-while getopts "fb:p:G:" opt; do
+while getopts "fb:p:GP:" opt; do
   case "${opt}" in
     f) overwrite=true ;;
     b) build_dir=${OPTARG} ;;
     p) prefix_dir="$(abspath "${OPTARG}")" ;;
+    P) extra_args="${extra_args} --preset=${OPTARG}" ;;
     G) generator="${OPTARG}" ;;
     \?) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
     *) usage; exit 2; ;;
@@ -48,9 +50,11 @@ fi
 
 # Process first argument (source)
 if [ $# -gt 0 ]; then
+  list_presets=false
   source_dir="$(abspath "$1")"
   shift
 else
+  list_presets=true
   source_dir="$PWD"
 fi
 
@@ -65,18 +69,24 @@ if ! mkdir "${build_dir}" 2>/dev/null ; then
     build_dir="$(readlink "${build_dir}")"
     echo "Build directory is a symlink -> ${build_dir}"
   fi
+  if command -v tmutil >/dev/null 2>&1 ; then
+    # Don't back up build directories
+    tmutil addexclusion "${build_dir}" \
+      || echo "Failed to exclude from time machine: $?"
+  fi
 fi
-cd "${build_dir}"
 
-if command -v tmutil >/dev/null 2>&1 ; then
-  # Don't back up build directories
-  tmutil addexclusion "${build_dir}" \
-    || echo "Failed to exclude from time machine: $?"
+if ${list_presets}; then
+  cmake --list-presets configure "${source_dir}" >&2
+  echo "(Invoke preset with -P or --preset=)"
 fi
+
+cd "${build_dir}"
 
 # Call cmake with remaining arguments
 set -x
 exec cmake -G "${generator}" --log-level=verbose \
+  ${extra_args} \
   "-DCMAKE_INSTALL_PREFIX:PATH=${prefix_dir}" \
   "-DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON" \
   "$@" "${source_dir}"

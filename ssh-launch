@@ -1,5 +1,5 @@
 #!/bin/bash -e
 
-printf "ssh destination: "
+printf "%s\n> " "Enter ssh server to connect to:"
 read SSH_DST
 exec ssh $SSH_DST
