@@ -1,4 +1,4 @@
 #!/bin/sh -e
 # Copy a git patch to the clipboard
 
-git format-patch --stdout "$@" | pbcopy
+git format-patch -1 --stdout "$@" | pbcopy
