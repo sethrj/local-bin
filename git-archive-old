@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+"""
+Archive stale local branches whose HEAD commit is older than a given date.
+
+Examples:
+  python git-archive-all
+  python git-archive-all "January 2025"
+  python git-archive-all "two weeks ago"
+  python git-archive-all --dry-run "six months ago"
+"""
+
+import argparse
+import subprocess
+import sys
+from datetime import datetime, timedelta
+
+
+def git(*args, check=True):
+    result = subprocess.run(
+        ["git", *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed: {result.stderr.strip() or result.stdout.strip()}"
+        )
+    return result.stdout.strip()
+
+
+def is_git_repo():
+    try:
+        git("rev-parse", "--is-inside-work-tree", check=True)
+        return True
+    except RuntimeError:
+        return False
+
+
+def local_branches(ignore_current=True):
+    refs = git("for-each-ref", "--format=%(refname:short)", "refs/heads")
+    branches = {b for b in refs.splitlines() if b.strip()}
+    if ignore_current:
+        current = git("branch", "--show-current", check=False)
+        branches.discard(current)
+    return branches
+
+
+def branch_head_epoch(branch):
+    ts = git("log", "-1", "--format=%ct", branch)
+    return int(ts) if ts else None
+
+
+def archive_branch(branch):
+    assert not branch.startswith("archive/")
+    target = f"archive/{branch}"
+
+    try:
+        git("branch", "-m", branch, target)
+    except RuntimeError as e:
+        print(f"Failed to rename {branch} -> {target}: {e!s}")
+        return False
+
+    return True
+
+
+DATEPARSE_FALLBACK_FMT = "%Y%m%d"
+def dateparse_fallback(datestr: str) -> datetime:
+    try:
+        return datetime.strptime(datestr, DATEPARSE_FALLBACK_FMT)
+    except ValueError:
+        print(f"Dateparser unavailable: time must be input as {DATEPARSE_FALLBACK_FMT}", file=sys.stderr)
+        raise
+        
+def main():
+    try:
+        from dateparser import parse as dateparse
+        default = "six months ago"
+    except ImportError:
+        print("warning: failed to load `dateparser` package", file=sys.stderr)
+        dateparse = dateparse_fallback
+        default = (datetime.now() - timedelta(days=180)).strftime(DATEPARSE_FALLBACK_FMT)
+
+    parser = argparse.ArgumentParser(
+        description="Rename local branches older than a date into archive/*."
+    )
+    parser.add_argument(
+        "date",
+        nargs="?",
+        default=default,
+        help='Date or relative date such as "January 2025", "two weeks ago", or "six months ago"',
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be renamed without changing git state",
+    )
+    args = parser.parse_args()
+
+    if not is_git_repo():
+        print("Not inside a git repository.", file=sys.stderr)
+        return 1
+
+
+    try:
+        cutoff = dateparse(args.date)
+    except ValueError as exc:
+        print(f"Error parsing date: {exc}", file=sys.stderr)
+        return 1
+    if cutoff is None:
+        print(f"Failed to parse date {args.date}", file=sys.stderr)
+        return 1
+
+    run(cutoff, args.dry_run)
+
+
+def run(cutoff: datetime, dry_run: bool):
+    cutoff_epoch = int(cutoff.timestamp())
+    local_tz = datetime.now().astimezone().tzinfo
+
+    to_archive: list[tuple[int, str]] = []
+
+    for branch in local_branches():
+        if "/" in branch:
+            continue
+
+        epoch = branch_head_epoch(branch)
+        if epoch is None:
+            continue
+
+        if epoch < cutoff_epoch:
+            to_archive.append((epoch, branch))
+
+    if not to_archive:
+        print(f"No branches older than {cutoff!r} were found.")
+        return 1
+
+    any_failed = False
+    for epoch, branch in sorted(to_archive):
+        local_dt = datetime.fromtimestamp(epoch, tz=local_tz)
+
+        if dry_run:
+            print(
+                f"Would rename {branch} (last commit: {local_dt.isoformat()}) -> archive/{branch}"
+            )
+            continue
+
+        ok = archive_branch(branch)
+        if ok:
+            print(f"Renamed {branch} (last commit: {local_dt.isoformat()})")
+
+        any_failed = any_failed or not ok
+
+    if any_failed:
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
