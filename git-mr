@@ -25,6 +25,10 @@ else
   ROOT=merge-requests
 fi
 
-BRANCH="mr/${REMOTE}-${MR}"
-git fetch ${REMOTE} ${ROOT}/${MR}/head:${BRANCH}
-git checkout ${BRANCH}
+REMOTE_BRANCH="${ROOT}/${MR}/head"
+LOCAL_BRANCH="mr/${REMOTE}-${MR}"
+git fetch ${REMOTE} ${REMOTE_BRANCH}:${LOCAL_BRANCH}
+git checkout ${LOCAL_BRANCH}
+git config set branch.${LOCAL_BRANCH}.merge ${REMOTE_BRANCH}
+git config set branch.${LOCAL_BRANCH}.remote ${REMOTE}
+git config set branch.${LOCAL_BRANCH}.pushRemote ${REMOTE}
