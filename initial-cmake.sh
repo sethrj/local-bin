@@ -20,11 +20,11 @@ if ! is_command cmake; then
   exit 1
 fi
 
-local overwrite=false
-local build_dir=
-local prefix_dir=
-local generator=
-local extra_args=
+overwrite=false
+build_dir=
+prefix_dir=
+generator=
+extra_args=
 
 # Process options
 OPTIND=1
