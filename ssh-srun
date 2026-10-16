@@ -1,0 +1,54 @@
+#!/bin/sh
+
+set -e
+
+REMOTE_SHELL=bash
+
+if [ $# -eq 0 ]; then
+  read -r -p "Enter login server [excl-tty]: " LOGIN_SERVER
+  LOGIN_SERVER=${LOGIN_SERVER:-excl-tty}
+
+  read -r -p "Enter partition [list partitions and exit]: " PARTITION
+  if [ -z "$PARTITION" ]; then
+    # NOTE: launching via `shell -c` is necessary to get additional partition
+    # info .
+    # Trailing %L is time limit for user job: days-hours:minutes:seconds
+    ssh "$LOGIN_SERVER" $REMOTE_SHELL <<'EOF'
+sinfo -o "%20P %4A %16C %12G"
+if [ -n "$(squeue --me --noheader)" ]; then
+  printf "%s jobs:\n" "$USER"
+  squeue --me -o '%20P %4D %4C %L'
+fi
+EOF
+    exit $?
+  fi
+
+  read -r -p "Enter CORES_OPT [32]: " CORES_OPT
+
+  read -r -p "Enter memory in GB [4 * cores]: " MEM_OPT
+
+  read -r -p "Enter GRES_OPT [none]: " GRES_OPT
+elif [ $# -gt 2 ]; then
+  LOGIN_SERVER=$1
+  PARTITION=$2
+  CORES_OPT=$3
+  MEM_OPT=$4
+  GRES_OPT=$5
+else
+  echo "usage: $0"
+  echo "       $0 login_server partition cores mem gpu"
+fi
+
+CORES_OPT="--cpus-per-task=${CORES_OPT:-32}"
+DEFAULT_MEM_OPT=$((CORES_OPT * 4))
+MEM_OPT="--mem=${MEM_OPT:-$DEFAULT_MEM_OPT}G"
+
+if [ -n "$GRES_OPT" ]; then
+  case "$GRES_OPT" in
+    *:*) GRES_OPT=--gres=${GRES_OPT} ;;
+    *) GRES_OPT=--gres=${GRES_OPT}:1 ;;
+  esac
+fi
+
+set -x
+exec ssh -t "$LOGIN_SERVER" "srun -p $PARTITION $CORES_OPT $MEM_OPT $GRES_OPT --pty $REMOTE_SHELL -l"

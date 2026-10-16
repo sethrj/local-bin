@@ -1,0 +1,4 @@
+#!/bin/sh -e
+
+SUBJECT="$(git log -1 --format='%s')"
+exec git reset $(git commit-tree -p HEAD^^ -p HEAD^2 -m "$SUBJECT" HEAD^{tree})
