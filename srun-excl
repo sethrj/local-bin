@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+REMOTE_HOST=excl-tty
+REMOTE_SHELL=bash
+
+if [ $# -eq 0 ]; then
+  ssh $REMOTE_HOST "savail"
+  exit 0
+fi
+
+exec ssh -t $REMOTE_HOST "srun $@ --pty $REMOTE_SHELL -l"

@@ -37,6 +37,7 @@ elif [ $# -gt 2 ]; then
 else
   echo "usage: $0"
   echo "       $0 login_server partition cores mem gpu"
+  return 0
 fi
 
 CORES_OPT="--cpus-per-task=${CORES_OPT:-32}"
